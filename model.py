@@ -3,7 +3,8 @@ import numpy as np
 import random
 import tensorflow as tf
 
-num_update_samples = 1
+update_sample_region = 100
+num_update_samples = 32
 num_update_iters = 1
 input_size = 3
 hidden_size = 35
@@ -55,16 +56,17 @@ def sample_channels(mean, log_std):
 
 def get_update_samples(replay_memory, num_samples, baseline):
     total_num = len(replay_memory['channels'])
+    num_samples = min(total_num, num_samples)
     channels = []
     rewards = []
     channels.append(replay_memory['channels'][total_num - 1])
     rewards.append(replay_memory['rewards'][total_num - 1])
 
-    start_idx = max(total_num - 10, 0)
+    sample_region = min(update_sample_region, total_num)
     for _ in range(num_samples - 1):
-        idx = random.randint(start_idx, total_num - 1)
-        channels.append(replay_memory['channels'][idx - 1])
-        rewards.append(replay_memory['rewards'][idx - 1])
+        idx = int(sample_region * math.pow(random.random(), 1. / 8) + total_num - sample_region)
+        channels.append(replay_memory['channels'][idx])
+        rewards.append(replay_memory['rewards'][idx])
 
     rewards = [reward - baseline for reward in rewards]
     return channels, rewards
