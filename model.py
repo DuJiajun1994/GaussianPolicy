@@ -3,6 +3,8 @@ import numpy as np
 import random
 import tensorflow as tf
 
+num_update_samples = 1
+num_update_iters = 1
 input_size = 3
 hidden_size = 35
 learning_rate = 0.01
@@ -50,6 +52,23 @@ def sample_channels(mean, log_std):
         channels[i] = int(math.pow(2, n))
     return channels
 
+
+def get_update_samples(replay_memory, num_samples, baseline):
+    total_num = len(replay_memory['channels'])
+    channels = []
+    rewards = []
+    channels.append(replay_memory['channels'][total_num - 1])
+    rewards.append(replay_memory['rewards'][total_num - 1])
+
+    start_idx = max(total_num - 10, 0)
+    for _ in range(num_samples - 1):
+        idx = random.randint(start_idx, total_num - 1)
+        channels.append(replay_memory['channels'][idx - 1])
+        rewards.append(replay_memory['rewards'][idx - 1])
+
+    rewards = [reward - baseline for reward in rewards]
+    return channels, rewards
+
 if __name__ == '__main__':
     data = tf.placeholder(tf.float32, shape=[None, input_size])
     channels = tf.placeholder(tf.float32, shape=[None])
@@ -63,6 +82,7 @@ if __name__ == '__main__':
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
 
+        replay_memory = {'channels': [], 'rewards': []}
         baseline = 0.
         beta_hat_t = 1.
         d = np.zeros([1, input_size], dtype=np.float32)
@@ -70,15 +90,22 @@ if __name__ == '__main__':
             m, l = sess.run([mean, log_std], feed_dict={data: d})
             c = sample_channels(m, l)
             r = get_rewards(c)
+            replay_memory['channels'].append(c[0])
+            replay_memory['rewards'].append(r[0])
             average_reward = sum(r) / len(r)
             baseline = (1 - baseline_alpha) * baseline + baseline_alpha * average_reward
             beta_hat_t *= 1 - baseline_alpha
-            r = [item - baseline / (1 - beta_hat_t) for item in r]
-            sess.run(train_op, feed_dict={
-                data: d,
-                channels: c,
-                rewards: r
-            })
+
+            for _ in range(num_update_iters):
+                c, r = get_update_samples(replay_memory=replay_memory,
+                                          num_samples=num_update_samples,
+                                          baseline=baseline)
+                sess.run(train_op, feed_dict={
+                    data: d,
+                    channels: c,
+                    rewards: r
+                })
+
             if i % test_interval == 0:
                 test_rewards = []
                 for _ in range(test_size):
