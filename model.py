@@ -38,7 +38,7 @@ def get_rewards(channels):
             reward = channel
         else:
             reward = 32 - channel
-        rewards[i] = reward
+        rewards[i] = reward / 100.
     return rewards
 
 
@@ -101,7 +101,7 @@ if __name__ == '__main__':
             for _ in range(num_update_iters):
                 c, r = get_update_samples(replay_memory=replay_memory,
                                           num_samples=num_update_samples,
-                                          baseline=baseline)
+                                          baseline=baseline / (1 - beta_hat_t))
                 sess.run(train_op, feed_dict={
                     data: d,
                     channels: c,
