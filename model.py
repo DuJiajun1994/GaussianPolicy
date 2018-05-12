@@ -34,11 +34,11 @@ def get_rewards(channels):
     rewards = np.empty(shape=[batch_size], dtype=np.float32)
     for i in range(batch_size):
         channel = channels[i]
-        if channel < 16:
+        if channel < 6:
             reward = channel
         else:
-            reward = 32 - channel
-        rewards[i] = reward / 100.
+            reward = 12 - channel
+        rewards[i] = reward / 10.
     return rewards
 
 
@@ -47,10 +47,10 @@ def sample_channels(mean, log_std):
     channels = np.empty([batch_size], dtype=np.float32)
     for i in range(batch_size):
         std = math.exp(log_std[i])
-        n = random.gauss(mean[i], std)
-        if n > 10:
-            n = 10
-        channels[i] = int(math.pow(2, n))
+        channel = random.gauss(mean[i], std)
+        if channel > 10:
+            channel = 10
+        channels[i] = channel
     return channels
 
 
