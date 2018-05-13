@@ -25,6 +25,7 @@ def build_model(inputs):
     mean = tf.layers.dense(net, 1)
     mean = tf.squeeze(mean, -1)
     log_std = tf.layers.dense(net, 1)
+    log_std = tf.clip_by_value(log_std, -3, 1)
     log_std = tf.squeeze(log_std, -1)
     return mean, log_std
 
@@ -38,7 +39,7 @@ def get_rewards(channels):
             reward = channel
         else:
             reward = 12 - channel
-        rewards[i] = reward / 10.
+        rewards[i] = reward / 10. + random.random()
     return rewards
 
 
