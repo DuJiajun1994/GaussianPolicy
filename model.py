@@ -3,8 +3,8 @@ import numpy as np
 import random
 import tensorflow as tf
 
-update_sample_region = 100
-num_update_samples = 32
+update_sample_region = 1
+num_update_samples = 1
 num_update_iters = 1
 input_size = 3
 hidden_size = 35
@@ -24,35 +24,21 @@ def build_model(inputs):
                           activation=tf.nn.relu)
     mean = tf.layers.dense(net, 1)
     mean = tf.squeeze(mean, -1)
-    log_std = tf.layers.dense(net, 1)
-    log_std = tf.clip_by_value(log_std, -3, 1)
-    log_std = tf.squeeze(log_std, -1)
-    return mean, log_std
+    std = tf.layers.dense(net,
+                          units=1,
+                          activation=tf.nn.softplus)
+    std = tf.squeeze(std, -1) * 10
+    normal = tf.distributions.Normal(loc=mean, scale=std)
+    return normal
 
 
-def get_rewards(channels):
-    batch_size = channels.shape[0]
-    rewards = np.empty(shape=[batch_size], dtype=np.float32)
-    for i in range(batch_size):
-        channel = channels[i]
-        if channel < 6:
-            reward = channel
-        else:
-            reward = 12 - channel
-        rewards[i] = reward / 10. + random.random()
-    return rewards
-
-
-def sample_channels(mean, log_std):
-    batch_size = len(mean)
-    channels = np.empty([batch_size], dtype=np.float32)
-    for i in range(batch_size):
-        std = math.exp(log_std[i])
-        channel = random.gauss(mean[i], std)
-        if channel > 10:
-            channel = 10
-        channels[i] = channel
-    return channels
+def get_rewards(channel):
+    if channel < 6:
+        reward = channel
+    else:
+        reward = 12 - channel
+    reward = reward / 10. + random.random()
+    return reward
 
 
 def get_update_samples(replay_memory, num_samples, baseline):
@@ -72,14 +58,21 @@ def get_update_samples(replay_memory, num_samples, baseline):
     rewards = [reward - baseline for reward in rewards]
     return channels, rewards
 
+
+def deal_channel(channels):
+    channel = int(channels[0])
+    if channel > 10:
+        channel = 10
+    return channel
+
 if __name__ == '__main__':
     data = tf.placeholder(tf.float32, shape=[None, input_size])
     channels = tf.placeholder(tf.float32, shape=[None])
     rewards = tf.placeholder(tf.float32, shape=[None])
-    mean, log_std = build_model(data)
-    n_log_p = log_std + tf.square(channels - mean) / (tf.exp(log_std * 2) * 2)
-    losses = n_log_p * rewards
-    loss = tf.reduce_mean(losses)
+    normal = build_model(data)
+    sample = tf.squeeze(normal.sample(1), axis=0)
+    n_log_p = - tf.log(normal.prob(channels + 1e-8))
+    loss = tf.reduce_mean(n_log_p * rewards)
     train_op = tf.train.AdamOptimizer(learning_rate).minimize(loss)
 
     with tf.Session() as sess:
@@ -90,13 +83,12 @@ if __name__ == '__main__':
         beta_hat_t = 1.
         d = np.zeros([1, input_size], dtype=np.float32)
         for i in range(train_iters):
-            m, l = sess.run([mean, log_std], feed_dict={data: d})
-            c = sample_channels(m, l)
+            c = sess.run(sample, feed_dict={data: d})
+            c = deal_channel(c)
             r = get_rewards(c)
-            replay_memory['channels'].append(c[0])
-            replay_memory['rewards'].append(r[0])
-            average_reward = sum(r) / len(r)
-            baseline = (1 - baseline_alpha) * baseline + baseline_alpha * average_reward
+            replay_memory['channels'].append(c)
+            replay_memory['rewards'].append(r)
+            baseline = (1 - baseline_alpha) * baseline + baseline_alpha * r
             beta_hat_t *= 1 - baseline_alpha
 
             for _ in range(num_update_iters):
@@ -112,9 +104,9 @@ if __name__ == '__main__':
             if i % test_interval == 0:
                 test_rewards = []
                 for _ in range(test_size):
-                    m, l = sess.run([mean, log_std], feed_dict={data: d})
-                    c = sample_channels(m, l)
+                    c = sess.run(sample, feed_dict={data: d})
+                    c = deal_channel(c)
                     r = get_rewards(c)
-                    test_rewards.append(sum(r) / len(r))
+                    test_rewards.append(r)
                 average_reward = sum(test_rewards) / len(test_rewards)
                 print('Iteration {}, baseline {}, average reward {}'.format(i, baseline, average_reward))
