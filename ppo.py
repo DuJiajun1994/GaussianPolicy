@@ -11,6 +11,8 @@ test_interval = 100
 test_size = 100
 
 ppo_epsilon = 0.2
+update_iters = 10
+
 
 def build_model(inputs, name, trainable):
     with tf.variable_scope(name):
@@ -84,11 +86,12 @@ if __name__ == '__main__':
 
             unbiased_baseline = baseline / (1 - beta_hat_t)
             r = [item - unbiased_baseline for item in r]
-            sess.run(train_op, feed_dict={
-                data: d,
-                channels: c,
-                rewards: r
-            })
+            for _ in range(update_iters):
+                sess.run(train_op, feed_dict={
+                    data: d,
+                    channels: c,
+                    rewards: r
+                })
 
             sess.run(update_old_policy_op)
 
